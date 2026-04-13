@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+  <title>SopScan by SopGlide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #6d28d9;
+      --primary-hover: #5b21b6;
+      --primary-light: rgba(109,40,217,.12);
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --border: #e5e5ea;
+      --text: #1c1c1e;
+      --text-muted: #6e6e73;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --radius: 16px;
+      --shadow: 0 4px 24px rgba(0,0,0,.08);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--bg);
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon {
+      width: 36px; height: 36px;
+      background: var(--primary);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .brand-icon svg { width: 20px; height: 20px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .brand-name { font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
+    .brand-sub { font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: .5px; text-transform: uppercase; }
+    #btn-hist {
+      position: relative;
+      width: 38px; height: 38px;
+      background: none; border: 1.5px solid var(--border);
+      border-radius: 12px; cursor: pointer; color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    #btn-hist:hover { border-color: var(--primary); color: var(--primary); }
+    #btn-hist svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .badge {
+      position: absolute; top: -5px; right: -5px;
+      min-width: 18px; height: 18px; padding: 0 4px;
+      background: var(--primary); color: white;
+      font-size: 10px; font-weight: 700; border-radius: 9px;
+      display: none; align-items: center; justify-content: center;
+    }
+
+    .scan-title {
+      text-align: center;
+      padding: 20px 20px 12px;
+      flex-shrink: 0;
+    }
+    .scan-title h1 { font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
+    .scan-title p { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+
+    .vf-wrap {
+      flex: 1;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+    .viewfinder {
+      position: relative;
+      width: 100%;
+      max-width: 360px;
+      aspect-ratio: 1;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #1a1a1a;
+      box-shadow: var(--shadow);
+    }
+    #video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .corners { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+    .corner {
+      position: absolute;
+      width: 24px; height: 24px;
+      border-color: white; border-style: solid; border-width: 0; opacity: .85;
+    }
+    .corner.tl { top: 16px; left: 16px; border-top-width: 3px; border-left-width: 3px; border-radius: 4px 0 0 0; }
+    .corner.tr { top: 16px; right: 16px; border-top-width: 3px; border-right-width: 3px; border-radius: 0 4px 0 0; }
+    .corner.bl { bottom: 16px; left: 16px; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 4px; }
+    .corner.br { bottom: 16px; right: 16px; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 4px 0; }
+
+    #scan-line {
+      position: absolute; left: 10%; right: 10%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      border-radius: 2px; z-index: 3;
+      animation: scanAnim 2s ease-in-out infinite;
+      display: none;
+    }
+    @keyframes scanAnim { 0% { top: 15%; } 50% { top: 80%; } 100% { top: 15%; } }
+
+    #status-pill {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 4; display: none;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
+      border-radius: 20px; padding: 5px 12px;
+      font-size: 11px; font-weight: 600; color: white; letter-spacing: .3px;
+      white-space: nowrap;
+    }
+    #status-pill::before {
+      content: '';
+      display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: #22c55e;
+      margin-right: 6px; vertical-align: middle;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    #vf-loading {
+      position: absolute; inset: 0; z-index: 5;
+      display: flex; align-items: center; justify-content: center;
+      background: #1a1a1a;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(255,255,255,.15);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #vf-error {
+      position: absolute; inset: 0; z-index: 5;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; padding: 24px; text-align: center;
+      background: #1a1a1a;
+    }
+    .err-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(239,68,68,.15);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .err-icon svg { width: 24px; height: 24px; stroke: var(--danger); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    #error-msg { font-size: 13px; color: rgba(255,255,255,.75); line-height: 1.5; }
+    .btn-retry {
+      background: var(--primary); color: white;
+      border: none; border-radius: 12px;
+      padding: 10px 24px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-newtab {
+      background: rgba(255,255,255,.1); color: rgba(255,255,255,.85);
+      border: 1px solid rgba(255,255,255,.2); border-radius: 12px;
+      padding: 9px 20px; font-size: 13px; font-weight: 500;
+      cursor: pointer; font-family: inherit;
+    }
+
+    footer {
+      padding: 16px 20px 24px;
+      display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0;
+    }
+    #btn-flash {
+      width: 56px; height: 56px; flex-shrink: 0;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s; color: var(--text-muted);
+    }
+    #btn-flash:disabled { opacity: .35; cursor: default; }
+    #btn-flash.on { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+    #btn-flash svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    #btn-reg {
+      flex: 1; height: 56px;
+      background: var(--primary); color: white;
+      border: none; border-radius: 16px;
+      font-size: 16px; font-weight: 700; font-family: inherit;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background .15s, opacity .15s; letter-spacing: -.2px;
+    }
+    #btn-reg:hover { background: var(--primary-hover); }
+    #btn-reg:disabled { opacity: .4; cursor: default; background: var(--primary); }
+    #btn-reg svg { width: 20px; height: 20px; stroke: white; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    #qr-preview {
+      display: none;
+      margin: 0 20px;
+      background: var(--surface);
+      border: 2px solid var(--primary);
+      border-radius: 14px;
+      padding: 12px 16px;
+      flex-shrink: 0;
+      animation: fadeIn .2s ease;
+    }
+    #qr-preview.show { display: flex; align-items: center; gap: 10px; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .qr-preview-icon {
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: var(--primary-light); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .qr-preview-icon svg { width: 18px; height: 18px; stroke: var(--primary); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .qr-preview-text { flex: 1; min-width: 0; }
+    .qr-preview-label { font-size: 11px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: .4px; }
+    .qr-preview-code { font-size: 13px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+
+    /* MODAL */
+    #modal {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      align-items: flex-end; justify-content: center;
+      background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+      padding: 0 12px 12px;
+    }
+    #modal.open { display: flex; }
+    .modal-sheet {
+      width: 100%; max-width: 480px;
+      background: var(--surface); border-radius: 24px;
+      padding: 24px; display: flex; flex-direction: column; gap: 16px;
+      box-shadow: 0 -4px 40px rgba(0,0,0,.15);
+    }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; }
+    .modal-title-row { display: flex; align-items: center; gap: 10px; }
+    .modal-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: var(--primary-light);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-icon svg { width: 20px; height: 20px; stroke: var(--primary); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .modal-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+    .modal-heading { font-size: 16px; font-weight: 700; }
+    #btn-close-modal {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--bg); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; color: var(--text-muted);
+    }
+    #btn-close-modal svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; }
+
+    .result-card {
+      border-radius: 14px; padding: 18px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .result-card.ok   { background: rgba(16,185,129,.1); border: 1.5px solid rgba(16,185,129,.35); }
+    .result-card.warn { background: rgba(245,158,11,.1);  border: 1.5px solid rgba(245,158,11,.35); }
+    .result-card.bad  { background: rgba(239,68,68,.1);   border: 1.5px solid rgba(239,68,68,.35); }
+
+    .result-status { font-size: 17px; font-weight: 800; letter-spacing: -.3px; }
+    .result-card.ok   .result-status { color: var(--success); }
+    .result-card.warn .result-status { color: var(--warning); }
+    .result-card.bad  .result-status { color: var(--danger); }
+
+    .result-detail { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .result-detail strong { color: var(--text); font-weight: 600; }
+
+    .modal-actions { display: flex; gap: 8px; }
+    .btn-siguiente {
+      flex: 1; padding: 14px;
+      background: var(--primary); color: white;
+      border: none; border-radius: 14px;
+      font-size: 15px; font-weight: 700; font-family: inherit;
+      cursor: pointer;
+    }
+    .btn-siguiente:hover { background: var(--primary-hover); }
+
+    /* HISTORY */
+    #hist-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.45); backdrop-filter: blur(3px);
+    }
+    #hist-backdrop.open { display: block; }
+    #hist-panel {
+      position: fixed; inset: 0; left: auto;
+      width: min(360px, 100vw); z-index: 201;
+      background: var(--surface);
+      transform: translateX(100%); transition: transform .25s cubic-bezier(.4,0,.2,1);
+      display: flex; flex-direction: column;
+      box-shadow: -8px 0 40px rgba(0,0,0,.12);
+    }
+    #hist-panel.open { transform: translateX(0); }
+    .hist-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px; border-bottom: 1px solid var(--border);
+    }
+    .hist-header-left { display: flex; flex-direction: column; }
+    .hist-title { font-size: 17px; font-weight: 700; }
+    #hist-count { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    #btn-close-history {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--bg); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #btn-close-history svg { width: 16px; height: 16px; stroke: var(--text-muted); fill: none; stroke-width: 2.5; stroke-linecap: round; }
+    #hist-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .history-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      color: var(--text-muted); text-align: center; padding: 40px 20px;
+    }
+    .history-empty svg { width: 36px; height: 36px; stroke: var(--text-muted); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: .5; }
+    .history-empty p { font-size: 14px; }
+    .history-item {
+      background: var(--bg); border-radius: 14px;
+      padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .h-date { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .h-data { font-size: 13px; color: var(--text); word-break: break-all; line-height: 1.5; font-weight: 500; }
+    .h-status { font-size: 11px; font-weight: 700; margin-top: 2px; }
+    .h-status.ok   { color: var(--success); }
+    .h-status.warn { color: var(--warning); }
+    .h-status.bad  { color: var(--danger); }
+    #hist-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: none; }
+
+    /* TOAST */
+    #toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(8px);
+      background: rgba(28,28,30,.88); color: white;
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; font-weight: 500;
+      opacity: 0; transition: all .2s; pointer-events: none; z-index: 999;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="14" width="3" height="3"/><rect x="14" y="18" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">SopScan</div>
+        <div class="brand-sub">by SopGlide</div>
+      </div>
+    </div>
+    <button id="btn-hist" title="Historial">
+      <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+      <span class="badge" id="hist-badge"></span>
+    </button>
+  </header>
+
+  <div class="scan-title">
+    <h1>Escanear QR</h1>
+    <p>Apunta la cámara hacia el código</p>
+  </div>
+
+  <div class="vf-wrap">
+    <div class="viewfinder">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="corners">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+      </div>
+      <div id="scan-line"></div>
+      <div id="status-pill">Escaneando...</div>
+      <div id="vf-loading"><div class="spinner"></div></div>
+      <div id="vf-error">
+        <div class="err-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <p id="error-msg">No se pudo acceder a la cámara.</p>
+        <button class="btn-retry" id="btn-retry">Reintentar</button>
+        <button class="btn-newtab" id="btn-newtab">Abrir en pestaña nueva ↗</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="qr-preview">
+    <div class="qr-preview-icon">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+    </div>
+    <div class="qr-preview-text">
+      <div class="qr-preview-label">QR detectado — presiona Registrar</div>
+      <div class="qr-preview-code" id="qr-preview-code"></div>
+    </div>
+    <button id="btn-cancel-qr" title="Cancelar" style="width:28px;height:28px;border-radius:50%;background:var(--bg);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);">
+      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <footer>
+    <button id="btn-flash" disabled title="Flash">
+      <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    </button>
+    <button id="btn-reg">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01"/></svg>
+      Registrar
+    </button>
+  </footer>
+
+</div>
+
+<!-- MODAL -->
+<div id="modal">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <div class="modal-title-row">
+        <div class="modal-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+        </div>
+        <div>
+          <div class="modal-label">Verificación QR</div>
+          <div class="modal-heading" id="modal-heading">Resultado</div>
+        </div>
+      </div>
+      <button id="btn-close-modal">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="modal-result"></div>
+    <div class="modal-actions">
+      <button class="btn-siguiente" onclick="closeModal()">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div id="hist-backdrop"></div>
+<div id="hist-panel">
+  <div class="hist-header">
+    <div class="hist-header-left">
+      <span class="hist-title">Historial</span>
+      <span id="hist-count">0 escaneos</span>
+    </div>
+    <button id="btn-close-history">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div id="hist-list"></div>
+  <div id="hist-footer"></div>
+</div>
+
+<div id="toast"></div>
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+  // ── SUPABASE ─────────────────────────────────────────────
+  const sb = window.supabase.createClient(
+    'https://czpzkkakhdcwhbclhugk.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6cHpra2FraGRjd2hiY2xodWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MTA0MzIsImV4cCI6MjA4OTE4NjQzMn0.dfUGsaZxg16X_S0uuGmCSvVTSGXVnwRGpBDqda5Z1P8'
+  );
+
+  const video       = document.getElementById('video');
+  const canvas      = document.getElementById('canvas');
+  const ctx         = canvas.getContext('2d', { willReadFrequently: true });
+  const vfLoading   = document.getElementById('vf-loading');
+  const vfError     = document.getElementById('vf-error');
+  const errorMsg    = document.getElementById('error-msg');
+  const scanLine    = document.getElementById('scan-line');
+  const statusPill  = document.getElementById('status-pill');
+  const modal       = document.getElementById('modal');
+  const modalResult = document.getElementById('modal-result');
+  const histPanel   = document.getElementById('hist-panel');
+  const histBackdrop= document.getElementById('hist-backdrop');
+  const histList    = document.getElementById('hist-list');
+  const histCount   = document.getElementById('hist-count');
+  const histFooter  = document.getElementById('hist-footer');
+  const histBadge   = document.getElementById('hist-badge');
+  const btnFlash    = document.getElementById('btn-flash');
+  const btnReg      = document.getElementById('btn-reg');
+  const btnHist     = document.getElementById('btn-hist');
+
+  let stream = null, animFrame = null, scanning = false, paused = false;
+  let hasTorch = false, torchOn = false, torchTrack = null, toastTimer = null;
+  let pendingCode = null;
+  const beep = new Audio("https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg");
+
+  const qrPreviewEl   = document.getElementById('qr-preview');
+  const qrPreviewCode = document.getElementById('qr-preview-code');
+
+  // ── TOAST ─────────────────────────────────────────────────
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // ── HISTORY (Supabase scan_history_2 — exclusivo de esta app) ───
+  async function getHistory() {
+    const { data, error } = await sb
+      .from('scan_history_2')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) { console.error('Error historial:', error); return []; }
+    return data || [];
+  }
+
+  async function insertHistory(entry) {
+    await sb.from('scan_history_2').insert(entry);
+  }
+
+  function formatDate(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString('es', { day: 'numeric', month: 'short' }) + ', ' +
+           d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  const STATUS_LABEL = { ok: '✓ Acceso permitido', warn: '⚠ Ya utilizado', bad: '✗ QR no válido' };
+
+  async function renderHistory() {
+    const h = await getHistory();
+    histCount.textContent = `${h.length} escaneo${h.length !== 1 ? 's' : ''}`;
+    histBadge.textContent = h.length;
+    histBadge.style.display = h.length ? 'flex' : 'none';
+    histFooter.style.display = 'none';
+
+    if (h.length === 0) {
+      histList.innerHTML = `
+        <div class="history-empty">
+          <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+          <p>Sin escaneos recientes</p>
+        </div>`;
+      return;
+    }
+
+    histList.innerHTML = h.map(r => `
+      <div class="history-item">
+        <span class="h-date">${formatDate(new Date(r.created_at).getTime())}</span>
+        <div class="h-data">${
+          r.nombre
+            ? escHtml(r.nombre) + (r.area || r.mesa ? ' — ' + [r.area, r.mesa ? 'Mesa ' + r.mesa : ''].filter(Boolean).join(' ') : '')
+            : escHtml(r.codigo)
+        }</div>
+        <div class="h-status ${r.estado}">
+          ${STATUS_LABEL[r.estado] || r.estado}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ── CAMERA ────────────────────────────────────────────────
+  async function startCamera() {
+    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+    scanning = false; hasTorch = false; torchOn = false; torchTrack = null;
+    btnFlash.disabled = true;
+    btnFlash.classList.remove('on');
+    vfLoading.style.display = 'flex';
+    vfError.style.display = 'none';
+    statusPill.style.display = 'none';
+    scanLine.style.display = 'none';
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      errorMsg.textContent = 'Tu navegador no soporta acceso a la cámara. Abre en Chrome o Safari con HTTPS.';
+      vfLoading.style.display = 'none';
+      vfError.style.display = 'flex';
+      return;
+    }
+
+    const tries = [
+      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: 'environment' } },
+      { video: { facingMode: 'user' } },
+      { video: true }
+    ];
+
+    let ok = false, lastErr = null;
+    for (const c of tries) {
+      try { stream = await navigator.mediaDevices.getUserMedia(c); ok = true; break; }
+      catch (e) { lastErr = e; }
+    }
+
+    if (!ok) {
+      vfLoading.style.display = 'none';
+      const n = lastErr && lastErr.name;
+      if (n === 'NotAllowedError' || n === 'PermissionDeniedError') {
+        errorMsg.textContent = 'Permiso de cámara denegado. Permite el acceso en la barra del navegador.';
+      } else if (n === 'NotFoundError') {
+        errorMsg.textContent = 'No se encontró ninguna cámara en este dispositivo.';
+      } else if (n === 'NotReadableError') {
+        errorMsg.textContent = 'La cámara está siendo usada por otra aplicación.';
+      } else {
+        errorMsg.textContent = 'No se pudo iniciar la cámara. (' + (n || 'Error') + ')';
+      }
+      vfError.style.display = 'flex';
+      return;
+    }
+
+    video.srcObject = stream;
+    video.onloadedmetadata = () => video.play().catch(() => {});
+    video.oncanplay = () => {
+      vfLoading.style.display = 'none';
+      statusPill.style.display = 'flex';
+      scanLine.style.display = 'block';
+      scanning = true;
+      const track = stream.getVideoTracks()[0];
+      if (track && track.getCapabilities) {
+        const caps = track.getCapabilities();
+        if (caps.torch) { hasTorch = true; torchTrack = track; btnFlash.disabled = false; }
+      }
+      startScanLoop();
+    };
+  }
+
+  // ── SCAN LOOP ─────────────────────────────────────────────
+  function startScanLoop() {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    setTimeout(() => { animFrame = requestAnimationFrame(tick); }, 60);
+  }
+
+  function tick() {
+    if (!scanning) return;
+    if (!paused && video.readyState >= video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
+      const sz = 400;
+      canvas.width = sz; canvas.height = sz;
+      ctx.drawImage(video, 0, 0, sz, sz);
+      try {
+        const img = ctx.getImageData(0, 0, sz, sz);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data) { onQRDetected(code.data); return; }
+      } catch(e) {}
+    }
+    animFrame = requestAnimationFrame(tick);
+  }
+
+  // ── QR DETECTADO ──────────────────────────────────────────
+  function onQRDetected(codigo) {
+    if (pendingCode === codigo) return;
+    beep.play().catch(() => {});
+    if (navigator.vibrate) navigator.vibrate(150);
+    paused = true;
+    pendingCode = codigo;
+    qrPreviewCode.textContent = codigo;
+    qrPreviewEl.classList.add('show');
+    btnReg.disabled = false;
+  }
+
+  function clearPending() {
+    pendingCode = null;
+    qrPreviewEl.classList.remove('show');
+    btnReg.disabled = false;
+  }
+
+  // ── REGISTRAR ─────────────────────────────────────────────
+  function manualScan() {
+    if (pendingCode) {
+      handleResult(pendingCode);
+      return;
+    }
+    if (!scanning || video.readyState < video.HAVE_ENOUGH_DATA || video.videoWidth === 0) {
+      showToast('Apunta la cámara a un QR primero');
+      return;
+    }
+    const w = video.videoWidth, h = video.videoHeight;
+    canvas.width = w; canvas.height = h;
+    ctx.filter = 'contrast(1.4) brightness(1.1)';
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.filter = 'none';
+    try {
+      const img = ctx.getImageData(0, 0, w, h);
+      const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+      if (code && code.data) {
+        onQRDetected(code.data);
+      } else {
+        showToast('No se detectó ningún QR en la imagen');
+      }
+    } catch(e) {
+      showToast('Error al procesar la imagen');
+    }
+  }
+
+  // ── HANDLE RESULT ─────────────────────────────────────────
+  async function handleResult(codigo) {
+    beep.play().catch(() => {});
+    if (navigator.vibrate) navigator.vibrate(150);
+    paused = true;
+
+    const { data, error } = await sb
+      .from('qr_codes')
+      .select('*')
+      .eq('codigo', codigo)
+      .single();
+
+    if (error || !data) {
+      await insertHistory({ codigo, estado: 'bad', area: null, mesa: null, combo: null, tipo: null, nombre: '' });
+      await renderHistory();
+      showModal('bad', codigo, null);
+      return;
+    }
+
+    if (data.tipo === 'regalo') {
+      await sb.from('qr_codes').update({ usos: (data.usos || 0) + 1 }).eq('codigo', codigo);
+      await insertHistory({ codigo, estado: 'ok', area: data.area, mesa: data.mesa, combo: 'REGALO', tipo: data.tipo, nombre: data.nombre || '' });
+      await renderHistory();
+      showModal('ok', codigo, data);
+      return;
+    }
+
+    if (data.usado) {
+      await insertHistory({ codigo, estado: 'warn', area: data.area, mesa: data.mesa, combo: data.combo, tipo: data.tipo, nombre: data.nombre || '' });
+      await renderHistory();
+      showModal('warn', codigo, data);
+      return;
+    }
+
+    await sb.from('qr_codes')
+      .update({ usado: true, usado_at: new Date().toISOString() })
+      .eq('codigo', codigo);
+
+    await insertHistory({ codigo, estado: 'ok', area: data.area, mesa: data.mesa, combo: data.combo, tipo: data.tipo, nombre: data.nombre || '' });
+    await renderHistory();
+    showModal('ok', codigo, data);
+  }
+
+  // ── MODAL ─────────────────────────────────────────────────
+  function showModal(status, codigo, data) {
+    const titles  = { ok: 'Acceso Permitido', warn: 'Ya Utilizado', bad: 'QR No Válido' };
+    const icons   = { ok: '✅', warn: '⚠️', bad: '❌' };
+    document.getElementById('modal-heading').textContent = titles[status];
+
+    let detail = '';
+    if (data) {
+      detail += `<strong>Área:</strong> ${escHtml(data.area)}<br>`;
+      detail += `<strong>Mesa:</strong> ${data.mesa}<br>`;
+      detail += `<strong>Combo:</strong> ${escHtml(data.combo)}<br>`;
+      detail += `<strong>Tipo:</strong> ${escHtml(data.tipo)}`;
+      if (data.tipo === 'invitado') detail += `<br><strong>Nombre:</strong> ${escHtml(data.nombre || 'Sin nombre')}`;
+      if (data.tipo === 'bebidas' && data.trago) detail += `<br><strong>Trago:</strong> ${escHtml(data.trago)}`;
+      if (status === 'warn' && data.usado_at) {
+        const d = new Date(data.usado_at);
+        detail += `<br><strong>Usado el:</strong> ${d.toLocaleString('es')}`;
+      }
+    } else {
+      detail = `Código: <code style="font-size:11px;word-break:break-all">${escHtml(codigo)}</code>`;
+    }
+
+    const msgs = {
+      ok:   'QR válido — acceso registrado correctamente.',
+      warn: 'Este QR ya fue escaneado anteriormente.',
+      bad:  'Este código QR no existe en el sistema.'
+    };
+
+    modalResult.innerHTML = `
+      <div class="result-card ${status}">
+        <div class="result-status">${icons[status]} ${msgs[status]}</div>
+        <div class="result-detail">${detail}</div>
+      </div>`;
+
+    modal.classList.add('open');
+  }
+
+  function closeModal() {
+    modal.classList.remove('open');
+    clearPending();
+    paused = false;
+    startScanLoop();
+  }
+
+  // ── TORCH ─────────────────────────────────────────────────
+  async function toggleTorch() {
+    if (!torchTrack || !hasTorch) return;
+    torchOn = !torchOn;
+    try {
+      await torchTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+      btnFlash.classList.toggle('on', torchOn);
+    } catch(e) {
+      torchOn = !torchOn;
+      showToast('Flash no disponible en este dispositivo');
+    }
+  }
+
+  // ── HISTORY PANEL ─────────────────────────────────────────
+  function openHistory()  { histPanel.classList.add('open');    histBackdrop.classList.add('open');    paused = true; }
+  function closeHistory() { histPanel.classList.remove('open'); histBackdrop.classList.remove('open'); paused = false; }
+
+  // ── EVENTS ────────────────────────────────────────────────
+  btnFlash.addEventListener('click', toggleTorch);
+  btnReg.addEventListener('click', manualScan);
+  btnHist.addEventListener('click', openHistory);
+  document.getElementById('btn-cancel-qr').addEventListener('click', () => {
+    clearPending();
+    paused = false;
+    startScanLoop();
+  });
+  document.getElementById('btn-retry').addEventListener('click', startCamera);
+  document.getElementById('btn-newtab').addEventListener('click', () => window.open(location.href, '_blank'));
+  document.getElementById('btn-close-history').addEventListener('click', closeHistory);
+  histBackdrop.addEventListener('click', closeHistory);
+  document.getElementById('btn-close-modal').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  // ── INIT ──────────────────────────────────────────────────
+  renderHistory();
+  startCamera();
+</script>
+</body>
+</html>
